@@ -12,6 +12,12 @@ const entries = await getCollection('jobs');
 const jobs: Job[] = sortByNewest(
     entries.map((entry) => ({ slug: entry.id, ...entry.data })),
 );
+const departments = [...new Set(jobs.map((job) => job.department))].sort((a, b) =>
+    a.localeCompare(b),
+);
+const locations = [...new Set(jobs.map((job) => job.location))].sort((a, b) =>
+    a.localeCompare(b),
+);
 ---
 
 <Layout title="Caldova Careers — Open roles">
@@ -26,6 +32,67 @@ const jobs: Job[] = sortByNewest(
 
     <h2 class="text-2xl font-medium mb-6 text-slate-100">Open roles</h2>
 
+    {jobs.length > 0 && (
+      <section
+        class="mb-6 rounded-xl border border-slate-700/70 bg-slate-800/40 p-4 sm:p-5"
+        aria-label="Filter open roles"
+        data-testid="role-filters"
+        data-jobs={JSON.stringify(jobs)}
+      >
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label for="department-filter" class="mb-2 block text-sm font-medium text-slate-200">
+              Department
+            </label>
+            <select
+              id="department-filter"
+              class="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+              data-testid="department-filter"
+            >
+              <option value="">All departments</option>
+              {departments.map((department) => <option value={department}>{department}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label for="location-filter" class="mb-2 block text-sm font-medium text-slate-200">
+              Location
+            </label>
+            <select
+              id="location-filter"
+              class="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+              data-testid="location-filter"
+            >
+              <option value="">All locations</option>
+              {locations.map((location) => <option value={location}>{location}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+            data-testid="filter-reset"
+          >
+            Reset filters
+          </button>
+          <p class="text-sm text-slate-300" aria-live="polite" data-testid="filter-results-count">
+            Showing {jobs.length} {jobs.length === 1 ? 'role' : 'roles'}.
+          </p>
+        </div>
+
+        <p
+          class="mt-4 rounded-lg border border-slate-700 bg-slate-900/70 p-4 text-slate-200"
+          role="status"
+          hidden
+          data-testid="filter-empty-state"
+        >
+          No roles match these filters. Try another selection or reset the filters.
+        </p>
+      </section>
+    )}
+
     {jobs.length === 0 ? (
       <EmptyState text="There are no open roles right now. Check back soon." />
     ) : (
@@ -38,3 +105,64 @@ const jobs: Job[] = sortByNewest(
     )}
   </div>
 </Layout>
+
+<script>
+  import { filterJobs } from '../lib/jobs';
+  import type { Job } from '../types/job';
+
+  const filterControls = document.querySelector<HTMLElement>('[data-testid="role-filters"]');
+
+  if (filterControls) {
+    const departmentSelect = filterControls.querySelector<HTMLSelectElement>(
+      '[data-testid="department-filter"]',
+    );
+    const locationSelect = filterControls.querySelector<HTMLSelectElement>(
+      '[data-testid="location-filter"]',
+    );
+    const resetButton = filterControls.querySelector<HTMLButtonElement>(
+      '[data-testid="filter-reset"]',
+    );
+    const resultsCount = filterControls.querySelector<HTMLElement>(
+      '[data-testid="filter-results-count"]',
+    );
+    const emptyState = filterControls.querySelector<HTMLElement>(
+      '[data-testid="filter-empty-state"]',
+    );
+    const rolesGrid = document.querySelector<HTMLElement>('[data-testid="roles-grid"]');
+
+    if (!departmentSelect || !locationSelect || !resetButton || !resultsCount || !emptyState || !rolesGrid) {
+      throw new Error('Role filter controls are missing required elements.');
+    }
+
+    const jobs: Job[] = JSON.parse(filterControls.dataset.jobs ?? '');
+    const roleCards = Array.from(
+      rolesGrid.querySelectorAll<HTMLElement>('[data-testid="role-card"]'),
+    );
+
+    /** Apply the current filter selections and update the visible result state. */
+    const updateResults = (): void => {
+      const matchingJobs = filterJobs(jobs, {
+        department: departmentSelect.value,
+        location: locationSelect.value,
+      });
+      const matchingJobIds = new Set(matchingJobs.map((job) => job.slug));
+
+      for (const card of roleCards) {
+        card.hidden = !matchingJobIds.has(card.dataset.jobId ?? '');
+      }
+
+      const count = matchingJobs.length;
+      rolesGrid.hidden = count === 0;
+      emptyState.hidden = count !== 0;
+      resultsCount.textContent = `Showing ${count} ${count === 1 ? 'role' : 'roles'}.`;
+    };
+
+    departmentSelect.addEventListener('change', updateResults);
+    locationSelect.addEventListener('change', updateResults);
+    resetButton.addEventListener('click', () => {
+      departmentSelect.value = '';
+      locationSelect.value = '';
+      updateResults();
+    });
+  }
+</script>
